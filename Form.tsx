@@ -33,6 +33,10 @@ export interface ColourOption {
     readonly isDisabled?: boolean;
 }
 
+/**
+ * Get color styles for product color dropdown
+ *
+ */
 const colourStyles: StylesConfig<ColourOption, true> = {
     control: (styles) => ({ ...styles, backgroundColor: 'white' }),
     option: (styles, { data, isDisabled, isFocused, isSelected }) => {
@@ -86,6 +90,15 @@ const colourStyles: StylesConfig<ColourOption, true> = {
     })
 };
 
+/**
+ * Product form
+ *
+ * @param locale - string
+ * @param productData - object
+ * @param photos - object
+ * @param publish - boolean
+ * @constructor
+ */
 function ProductForm({
     locale,
     productData,
@@ -171,6 +184,7 @@ function ProductForm({
     const handleChangeMaterials = (selectedOption: any) => {
         setSelectedMaterials(selectedOption);
     };
+
     const handleChangeColor = (selectedOption: any) => {
         const formValues = formRef?.current?.values;
         setSelectedColors(selectedOption);
@@ -251,16 +265,13 @@ function ProductForm({
         name: Yup.string()
             .max(140, t('Must be less characters', { charNumber: 140 }))
             .required(t('Required field')),
-        // description: Yup.string().required(t('Required field')),
         price: Yup.number().when('configured', {
             is: false,
             then: Yup.number().required(t('Required field')).min(0)
-            // otherwise: Yup.number().min(0)
         }),
         quantity: Yup.number().when('configured', {
             is: false,
             then: Yup.number().required(t('Required field')).min(0)
-            // otherwise: Yup.number().min(0)
         }),
         color: Yup.string().when('configured', {
             is: true,
@@ -633,7 +644,6 @@ function ProductForm({
                                         <em
                                             className="input-tips underline"
                                             role="presentation"
-                                            // onClick={() => setShowSizeTable(!showSizeTable)}
                                         >
                                             {t('Select one')}
                                         </em>

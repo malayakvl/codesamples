@@ -13,14 +13,22 @@ import * as zipLib from "zip-a-folder";
 import { generateRndPrefix } from "../lib/utils.js";
 import shell from "shelljs";
 import {
-    confirmShippedEmail, confirmSubscriptionEmail
+    confirmShippedEmail
 } from "../sender/templates.js";
 import { sendMail } from "../lib/sendMail.js";
 import path from "node:path";
 
 
-
-
+/**
+ * Crarate prf invoce method
+ *
+ * @param invoice - object
+ * @param path - string
+ * @param locale - string
+ * @param ivoiceType - string
+ * @param downloadType - string
+ * @returns {Promise<{success: boolean}>}
+ */
 async function createInvoice (invoice, path, locale, ivoiceType, downloadType = '') {
     try {
         let doc = new PDFDocument({ size: "A4", margin: 50 });
@@ -40,6 +48,14 @@ async function createInvoice (invoice, path, locale, ivoiceType, downloadType = 
 }
 
 
+/**
+ * Generate pdf invoice header
+ *
+ * @param doc - pdf file
+ * @param seller - object (seller info from DB)
+ * @param locale - string
+ * @returns {Promise<void>}
+ */
 async function generateHeader(doc, seller, locale) {
     doc
         .fillColor("#444444")
@@ -54,6 +70,17 @@ async function generateHeader(doc, seller, locale) {
         // .text(seller.phone, 300, 95, { align: "right" })
         .moveDown();
 }
+
+/**
+ * Generate custumer info block
+ *
+ * @param doc - pdf file
+ * @param invoice - object
+ * @param paymentData - object
+ * @param locale - string
+ * @param ivoiceType - string
+ * @returns {Promise<void>}
+ */
 async function generateCustomerInformation(doc, invoice, paymentData, locale, ivoiceType) {
     const { default: t } = await import(`../sender/order-${locale}.js`);
     doc
@@ -81,6 +108,7 @@ async function generateCustomerInformation(doc, invoice, paymentData, locale, iv
     const captionDate = ivoiceType !== 'refund' ? t["Invoice Date:"] : t["Refund Date:"];
 
     let transactionId = '';
+    // depend on payment method retrieve trinsaction ID
     if (invoice.paymentType === 'MASTERCARD' || invoice.paymentType === 'VISA') {
        transactionId = invoice.paymentDetails.paymentData.costs[0].transaction_id;
     } else if (invoice.paymentType === 'TRUSTLY') {
@@ -139,6 +167,15 @@ async function generateCustomerInformation(doc, invoice, paymentData, locale, iv
     generateHr(doc, 282);
 }
 
+/**
+ * Generate invoice products table
+ *
+ * @param doc - pdf file
+ * @param invoice - object
+ * @param locale - string
+ * @param ivoiceType - string
+ * @returns {Promise<void>}
+ */
 async function generateInvoiceTable(doc, invoice, locale, ivoiceType) {
     let i;
     const invoiceTableTop = 330;
@@ -242,8 +279,13 @@ async function generateInvoiceTable(doc, invoice, locale, ivoiceType) {
     }
 }
 
-async function generateFooter(doc, locale) {
-    // const { default: t } = await import(`../sender/order-${locale}.js`);
+/**
+ * Generate footer pdf document
+ *
+ * @param doc - pdf file
+ * @returns {Promise<void>}
+ */
+async function generateFooter(doc) {
     doc
         .fontSize(10)
         .text(
@@ -254,6 +296,17 @@ async function generateFooter(doc, locale) {
         );
 }
 
+/**
+ * Generate products table row
+ *
+ * @param doc - pdf file
+ * @param y - position
+ * @param item - object
+ * @param description - description product
+ * @param unitCost - price
+ * @param quantity - quantity
+ * @param lineTotal - total price
+ */
 function generateTableRow(
     doc,
     y,
@@ -272,6 +325,12 @@ function generateTableRow(
         .text(lineTotal, 0, y, { align: "right" });
 }
 
+/**
+ * Generate line
+ *
+ * @param doc - pdf file
+ * @param y - position
+ */
 function generateHr(doc, y) {
     doc
         .strokeColor("#aaaaaa")
@@ -281,6 +340,12 @@ function generateHr(doc, y) {
         .stroke();
 }
 
+/**
+ * Formatting price
+ *
+ * @param cents - float
+ * @returns {string}
+ */
 function formatCurrency(cents) {
     // return "$" + (cents / 100).toFixed(2);
     return parseFloat(cents).toFixed(2)+'€';
@@ -288,6 +353,11 @@ function formatCurrency(cents) {
 
 
 class Order {
+    /**
+     *
+     * @param sessionId - int
+     * @returns {Promise<{error: {code: number, message: string}, items: null}|{error: null, items: *[]}>}
+     */
     async createOrders (sessionId) {
         const client = await pool.connect();
         try {
@@ -324,6 +394,13 @@ class Order {
         }
     }
 
+    /**
+     * Get product qty
+     *
+     * @param productId - integer
+     * @param configId - integer
+     * @returns {Promise<{qty: any}|{error: {code: number, message: string}}>}
+     */
     async getProductQty (productId, configId) {
         const client = await pool.connect();
         try {
@@ -357,6 +434,12 @@ class Order {
         }
     }
 
+    /**
+     * Remove wait item from order
+     *
+     * @param itemId - integer
+     * @returns {Promise<{success: boolean}|{error: {code: number, message: string}}>}
+     */
     async removeItemWaitStatus(itemId) {
         const client = await pool.connect();
         try {
@@ -387,6 +470,13 @@ class Order {
     }
 
 
+    /**
+     * Update qty product by configuration in DB
+     *
+     * @param configId - integer
+     * @param qty - integer
+     * @returns {Promise<{success: boolean}|{error: {code: number, message: string}}>}
+     */
     async updateConfigQty(configId, qty) {
         const client = await pool.connect();
         try {
@@ -424,6 +514,12 @@ class Order {
         }
     }
 
+    /**
+     * Get current quantity for configuration from DB
+     *
+     * @param configId - integer
+     * @returns {Promise<{error: {code: number, message: string}}|{success: boolean, qty: any}|{success: boolean, qty: number}>}
+     */
     async getConfigQty(configId) {
         const client = await pool.connect();
         try {
@@ -444,7 +540,6 @@ class Order {
                     { message: e.message }
                 );
             }
-            // const items = null;
             const error = {
                 code: 500,
                 message: 'Error get list of product qty'
@@ -459,11 +554,15 @@ class Order {
     }
 
 
+    /**
+     * Update waiting item in DB
+     *
+     * @param orderId - integer
+     * @returns {Promise<{error: {code: number, message: string}}>}
+     */
     async updateWaitWithOrderId(orderId) {
         const client = await pool.connect();
         try {
-            console.log(`UPDATE data.orders SET 
-                    status='new', statusWaiting=null WHERE id='${orderId}' `);
             const orderData = await client.query(`UPDATE data.orders SET 
                     status='new', statusWaiting=null WHERE id='${orderId}' `);
 
@@ -489,6 +588,12 @@ class Order {
         }
     }
 
+    /**
+     * Check item for send waiting messege to buyer
+     *
+     * @param configId
+     * @returns {Promise<{error: {code: number, message: string}}|{items: (string|HTMLCollectionOf<HTMLTableRowElement>|number|SQLResultSetRowList|*[])}>}
+     */
     async sendingMessageByWaiting(configId) {
         const client = await pool.connect();
         try {
@@ -534,6 +639,13 @@ class Order {
         }
     }
 
+    /**
+     * Return no parsed product config qty
+     *
+     * @param qty - integer
+     * @param configId - integer
+     * @returns {Promise<{error: {code: number, message: string}}>}
+     */
     async returnNotParsedConfigQty(qty, configId) {
         const client = await pool.connect();
         try {
@@ -561,6 +673,14 @@ class Order {
         }
     }
 
+    /**
+     *
+     * @param itemId
+     * @param qty
+     * @param configId
+     * @param orderId
+     * @returns {Promise<{error: {code: number, message: string}, items: null}|{orderNuber: string}>}
+     */
     async updateWaitingItemQty(itemId, qty, configId, orderId) {
         const client = await pool.connect();
         try {
@@ -624,6 +744,14 @@ class Order {
     }
 
 
+    /**
+     * Update qty for configured product
+     *
+     * @param configId - integer
+     * @param qty - integer
+     * @param sessionId - integer
+     * @returns {Promise<{error: {code: number, message: string}, items: null}>}
+     */
     async updateProductConfigQty(configId, qty, sessionId) {
         const client = await pool.connect();
         try {
@@ -658,33 +786,19 @@ class Order {
         }
     }
 
-    async runWaitWorkflow(sessionId, productConfigurationId) {
-        const client = await pool.connect();
-        try {
-            const waitListQuery = `SELECT * FROM data.set_orders_from_waiting_list_by_product(${sessionId}, ${productConfigurationId});`;
-            await client.query(waitListQuery);
-        } catch (e) {
-            if (process.env.NODE_ENV === 'development') {
-                logger.log(
-                    'error',
-                    'Model error (runWaitWorkflow):',
-                    { message: e.message }
-                );
-            }
-            const items = null;
-            const error = {
-                code: 500,
-                message: 'Error get list of users'
-            };
-            return {
-                items,
-                error
-            };
-        } finally {
-            client.release();
-        }
-    }
-
+    /**
+     * Fetch list waiting products
+     *
+     * @param page - integer
+     * @param perPage - integer
+     * @param user - object
+     * @param isRead - boolean
+     * @param reqOffset - integer
+     * @param filters - object
+     * @param column - string
+     * @param sort - string
+     * @returns {Promise<{size: any, error: null, items: (string|HTMLCollectionOf<HTMLTableRowElement>|number|SQLResultSetRowList|*[])}|{error: {code: number, message: string}, items: null}>}
+     */
     async fetchWaitingItems (page, perPage = 20, user, isRead = false, reqOffset = null, filters, column, sort) {
         const client = await pool.connect();
         try {
@@ -744,6 +858,19 @@ class Order {
     }
 
 
+    /**
+     * Fetch list live items
+     *
+     * @param page - integer
+     * @param perPage - integer
+     * @param user - object
+     * @param isRead - boolean
+     * @param reqOffset - integer
+     * @param filters - object
+     * @param column - string
+     * @param sort - string
+     * @returns {Promise<{size: any, error: null, items: (string|HTMLCollectionOf<HTMLTableRowElement>|number|SQLResultSetRowList|*[])}|{error: {code: number, message: string}, items: null}>}
+     */
     async fetchLiveItems (page, perPage = 20000, user, isRead = false, reqOffset = null, filters, column, sort) {
         const client = await pool.connect();
         try {
@@ -854,6 +981,19 @@ class Order {
     }
 
 
+    /**
+     * Fetch order items
+     *
+     * @param page - integer
+     * @param perPage - integer
+     * @param user - object
+     * @param isRead - boolean
+     * @param reqOffset - integer
+     * @param filters - object
+     * @param column - string
+     * @param sort - string
+     * @returns {Promise<{error: {code: number, message: string}, items: null}|{grouppedStatuses: *[], size: any, error: null, items: (string|HTMLCollectionOf<HTMLTableRowElement>|number|SQLResultSetRowList|*[])}>}
+     */
     async fetchItems (page, perPage = 20, user, isRead = false, reqOffset = null, filters, column, sort) {
         const client = await pool.connect();
         try {
@@ -974,6 +1114,13 @@ class Order {
         }
     }
 
+    /**
+     * Fetch filters for orders list
+     *
+     * @param user - object
+     * @param type - string
+     * @returns {Promise<{res: {}, error: null}|{error: {code: number, message: string}, items: null}>}
+     */
     async fetchFilters (user, type) {
         const client = await pool.connect();
         try {
@@ -998,14 +1145,12 @@ class Order {
             const payments = await client.query(`SELECT * FROM data.get_orders_payments('${JSON.stringify(_filters)}');`);
             res.payments = payments.rows[0].payments ? payments.rows[0].payments : [];
             const countries = await client.query(`SELECT * FROM data.get_orders_countries('${JSON.stringify(_filters)}');`);
-            // console.log(`SELECT * FROM data.get_orders_countries('${JSON.stringify(_filters)}');`);
             res.countries = countries.rows[0].countries ? countries.rows[0].countries : [];
             const amounts = await client.query(`SELECT * FROM data.get_orders_total_amount_range('${JSON.stringify(_filters)}');`);
             res.amounts = amounts.rows[0].total_amount_range.max ? [amounts.rows[0].total_amount_range.min, amounts.rows[0].total_amount_range.max] : [];
             const error = null;
             const _filterBuyers = {};
             if (user.role_id === 2) {
-                // sellerIds.push(user.id);
                 _filterBuyers.seller_id = [user.id];
                 if (_filterBuyers.userIds) {
                     _filterBuyers.seller_id = _filters.userIds;
@@ -1013,7 +1158,6 @@ class Order {
                 }
             }
             let ordersQueryBuyers;
-            // const buyersQuery = `SELECT * FROM data.get_buyers(10000, 0, '${JSON.stringify(_filterBuyers)}', '${column} ${sort}');`;
             if (type === 'waiting') {
                 console.log(`SELECT * FROM data.get_buyers_waiting(100000, 0, '${JSON.stringify(_filterBuyers)}', 'first_name ASC');`);
                 ordersQueryBuyers = await client.query(`SELECT * FROM data.get_buyers_waiting(100000, 0, '${JSON.stringify(_filterBuyers)}', 'first_name ASC');`); // 'orders.created_at DESC'
@@ -1052,7 +1196,17 @@ class Order {
     }
 
 
-
+    /**
+     * Generate order pdf
+     *
+     * @param orderNumber - string
+     * @param userId - integer
+     * @param user - object
+     * @param locale -  string
+     * @param type - string
+     * @param typeInvoice - string
+     * @returns {Promise<{fileName: string, error: {code: number, message: string}}|{filename: string, fileEncoded: unknown, error: null}|{isCreated: boolean, filename: string, fileEncoded: unknown, error: null}>}
+     */
     async generatePdf (orderNumber, userId, user, locale, type='download', typeInvoice='') {
         const client = await pool.connect();
         const { default: t } = await import(`../sender/order-${locale}.js`);
@@ -1184,7 +1338,6 @@ class Order {
                     transaction_id: multiOrderPaymentData.paymentData.payment_methods[0].external_transaction_id,
                     paymentType: multiOrderPaymentData.paymentData.payment_methods[0].type,
                     orderId: orderId
-                    // paymentDetails: {}
                 };
 
                 // save payment method to db
@@ -1192,7 +1345,6 @@ class Order {
 
                 await createInvoice(invoice, `${dirUpload}/${typeInvoice !== 'refund' ? 'invoice' : 'refund'}_${res.rows[0].order_number}_${locale}.pdf`, locale, typeInvoice !== 'refund' ? 'invoice' : 'refund', type);
 
-                // await setTimeout(3000);
                 if (!fs.existsSync(`${process.env.DOWNLOAD_FOLDER}/orders/${userId}/${locale}/${typeInvoice !== 'refund' ? 'invoice' : 'refund'}_${res.rows[0].order_number}_${locale}.pdf`)) {
                     await setTimeout(2000);
                 }
@@ -1247,6 +1399,13 @@ class Order {
     }
 
 
+    /**
+     * Connect new item from fb comment with exist order
+     *
+     * @param commentId - integer
+     * @param userId - integer
+     * @returns {Promise<{success: boolean, error}|{data: *, success: boolean, error: null}>}
+     */
     async updateOrderByCommentId (commentId, userId) {
         const client = await pool.connect();
         try {
@@ -1271,30 +1430,12 @@ class Order {
         }
     }
 
-    async fetchExistByNumber (orderNumber) {
-        const client = await pool.connect();
-        try {
-            const SQL = `SELECT * FROM data.orders WHERE order_number = '${orderNumber}';`;
-            const res = await client.query(SQL);
-            if (res.rows.length > 0) {
-                return {success: true, error: null, data: res.rows[0]};
-            } else {
-                return {success: true, error: null, data: null};
-            }
-        } catch (e) {
-            if (process.env.NODE_ENV === 'development') {
-                logger.log(
-                    'error',
-                    'Model error:',
-                    { message: e.message }
-                );
-            }
-            return {success: false, error: e.message };
-        } finally {
-            client.release();
-        }
-    }
-
+    /**
+     * Fetch total order amount
+     *
+     * @param orderNumber - string
+     * @returns {Promise<{success: boolean, error}|{data: *, success: boolean, error: null}>}
+     */
     async fetchTotal (orderNumber) {
         const client = await pool.connect();
         try {
@@ -1316,6 +1457,12 @@ class Order {
     }
 
 
+    /**
+     * Check order status
+     *
+     * @param messageId - string
+     * @returns {Promise<{success: boolean, error}|{data: *, success: boolean, error: null}>}
+     */
     async checkOrderStatus (messageId) {
         const client = await pool.connect();
         try {
@@ -1336,6 +1483,12 @@ class Order {
         }
     }
 
+    /**
+     * Setup shipping status for orders
+     *
+     * @param orderIds - array
+     * @returns {Promise<{success: boolean, error}|{success: boolean, error: null}>}
+     */
     async setupShippingStatus (orderIds) {
         const client = await pool.connect();
         try {
@@ -1386,6 +1539,12 @@ class Order {
     }
 
 
+    /**
+     * Remove item from order
+     *
+     * @param orderItemId - integer
+     * @returns {Promise<{success: boolean, error}|{success: boolean, error: null}>}
+     */
     async removeOrderItem (orderItemId) {
         const client = await pool.connect();
         try {
@@ -1422,6 +1581,12 @@ class Order {
     }
 
 
+    /**
+     * Minus product qty from order
+     *
+     * @param orderItemId
+     * @returns {Promise<{success: boolean, error}|{success: boolean, error: null}>}
+     */
     async minusOrderItem (orderItemId) {
         const client = await pool.connect();
         try {
@@ -1461,126 +1626,16 @@ class Order {
     }
 
 
-    async connectThrowStoreOld(messageId, fromId, storeId, inPeriod, freePeriodEnd) {
-        const client = await pool.connect();
-        try {
-            // find order by message and attach to current user
-            const connetedQuery = `SELECT * FROM data.user2pages 
-                WHERE from_id='${fromId}' AND store_id=${storeId}`
-            const connetedQueryRes = await client.query(connetedQuery);
-            const queryOrder = `SELECT data.orders.id, data.orders.user_id AS fake_user_id,
-                    data.orders.live_sessions_id, data.orders.order_amount, 
-                    data.orders.total_amount
-                    FROM data.order_items LEFT JOIN 
-                    data.orders ON data.orders.id = data.order_items.order_id 
-                    WHERE message_id='${messageId}'`;
-            const findedOrderRes = await client.query(queryOrder);
-            const fakeUserId = findedOrderRes.rows[0].fake_user_id;
-            let _endPeriod;
-            if (freePeriodEnd) {
-                _endPeriod = `${moment(freePeriodEnd).format('YYYY-MM-DD')} ${moment(freePeriodEnd).format('HH:mm:ss')}`;
-                await client.query(`UPDATE data.orders
-                    SET 
-                        in_period = ${inPeriod},
-                        free_period_end='${_endPeriod}'
-                    WHERE id='${findedOrderRes.rows[0].id}'`)
-            }
-
-            if (connetedQueryRes.rows.length > 0) {
-                const userId = connetedQueryRes.rows[0].user_id;
-
-                // find order by message
-                const syncAt = moment().utcOffset(0, true).format('YYYY-MM-DD HH:mm:ss');
-                const settingsSettingsQuery = (
-                    `SELECT data.seller_settings.order_timer FROM data.seller_settings
-                                        LEFT JOIN data.live_sessions ON data.live_sessions.user_id=data.seller_settings.user_id
-                                        WHERE data.live_sessions.id = '${findedOrderRes.rows[0].live_sessions_id}'`);
-                const settingsSettingsRes = await client.query(settingsSettingsQuery);
-                let expireAt;
-                if (settingsSettingsRes.rows[0].order_timer.hours) {
-                    expireAt = moment().utcOffset(0, true).add(settingsSettingsRes.rows[0].order_timer.hours, 'hours').format('YYYY-MM-DD HH:mm:ss');
-                }
-                if (settingsSettingsRes.rows[0].order_timer.days) {
-                    expireAt = moment().utcOffset(0, true).add(settingsSettingsRes.rows[0].order_timer.days, 'days').format('YYYY-MM-DD HH:mm:ss');
-                }
-                if (settingsSettingsRes.rows[0].order_timer.minutes) {
-                    expireAt = moment().utcOffset(0, true).add(settingsSettingsRes.rows[0].order_timer.minutes, 'minutes').format('YYYY-MM-DD HH:mm:ss');
-                }
-                await client.query(`UPDATE data.orders
-                    SET user_id='${userId}',
-                        sync_at='${syncAt}',
-                        expire_order_at='${expireAt}'
-                    WHERE id='${findedOrderRes.rows[0].id}'`);
-
-                // remove fake user
-                await client.query(`DELETE FROM data.users WHERE id='${fakeUserId}'`);
-
-
-                // check if we have non payed order
-                const existNonPayedOrder = await client.query(
-                    `SELECT data.orders.id, data.orders.order_number, 
-                                        data.orders.order_amount, data.orders.total_amount,
-                                        data.orders.live_sessions_id FROM data.orders 
-                                        LEFT JOIN data.live_sessions ON data.live_sessions.id = data.orders.live_sessions_id
-                                        LEFT JOIN data.user_stores ON data.user_stores.id = data.live_sessions.store_id   
-                                        WHERE data.orders.user_id='${userId}'
-                                        AND data.orders.status='new' AND data.orders.id != '${findedOrderRes.rows[0].id}'
-                                        AND live_sessions_id='${findedOrderRes.rows[0].live_sessions_id}' 
-                                        AND status_waiting IS NULL`);
-                let orderId, orderNumber;
-                if (existNonPayedOrder.rows[0]?.id) {
-                    orderNumber = existNonPayedOrder.rows[0].order_number;
-                    orderId = existNonPayedOrder.rows[0].id;
-
-                    // before add new items check if this item already aexist in order, if yes only change quantity
-                    const updateExistItemsSQL = `UPDATE data.order_items SET 
-                        order_id='${orderId}' 
-                        WHERE order_id='${findedOrderRes.rows[0].id}' AND status IS NULL `;
-                    await client.query(updateExistItemsSQL);
-
-                    //remove row from data.orders cuz we change owner for order_items
-                    const removeUnusedOrder = `DELETE FROM data.orders 
-                        WHERE id='${findedOrderRes.rows[0].id}'`;
-                    await client.query(removeUnusedOrder);
-
-                    const orderItemsSQL = `SELECT * FROM data.order_items WHERE order_id='${orderId}'`;
-                    const orderItemsRes = await client.query(`SELECT price, quantity FROM data.order_items WHERE order_id='${orderId}'`);
-                    let totalItemsAm = 0;
-                    orderItemsRes.rows.forEach(_item => {
-                        totalItemsAm += _item.price*_item.quantity;
-                    })
-
-                    const updateAmountSQL = `UPDATE data.orders 
-                        SET order_amount = ${totalItemsAm},
-                        total_amount = ${totalItemsAm},
-                        expire_order_at='${expireAt}',
-                        sync_at=now(),
-                        in_period = ${inPeriod}
-                        WHERE id='${orderId}'`;
-                    await client.query(updateAmountSQL);
-                    if (inPeriod) {
-                        await client.query(`UPDATE data.orders SET
-                            free_period_end=${moment(freePeriodEnd).format('YYYY-MM-DD hh:mm:ss')}
-                            WHERE id='${orderId}'`)
-                    }
-                }
-            }
-            return { success: true };
-        } catch (e) {
-            if (process.env.NODE_ENV === 'development') {
-                logger.log(
-                    'error',
-                    'Model error:',
-                    { message: e.message }
-                );
-            }
-            return {success: false, error: e.message };
-        } finally {
-            client.release();
-        }
-    }
-
-
+    /**
+     * Connect message if from link on fb messenger with store order
+     *
+     * @param messageId - integer
+     * @param fromId - string
+     * @param storeId - integer
+     * @param inPeriod - boolean
+     * @param freePeriodEnd - booolean
+     * @returns {Promise<{success: boolean}|{success: boolean, error}>}
+     */
     async connectThrowStore(messageId, fromId, storeId, inPeriod, freePeriodEnd) {
         const client = await pool.connect();
         try {
@@ -1707,76 +1762,13 @@ class Order {
         }
     }
 
-    async findWaitByCommentId (commentId, userId) {
-        const client = await pool.connect();
-        try {
-            let orderNumber;let orderId;let waitItemId;
-            const SQL = `SELECT data.orders.id as order_wait_id, order_number, data.order_items.status, data.orders.id AS orderId,
-                        data.orders.live_sessions_id, order_amount, total_amount, quantity, data.order_items.user_id, 
-                                data.order_items.id as item_id
-                                FROM data.order_items 
-                                LEFT JOIN data.orders ON data.orders.user_id = data.order_items.user_id
-                                WHERE message_id='${commentId}' AND order_number IS NOT null ORDER BY order_id`;
-            const res = await client.query(SQL);
-            orderNumber = res.rows[0].order_number;
-            orderId = res.rows[0].order_wait_id;
-            waitItemId = res.rows[0].item_id;
-            // get order items
-            const waitItems = await client.query(`SELECT price, quantity FROM data.order_items WHERE user_id='${res.rows[0].user_id}'`);
-            let totalWaitAmount = parseFloat(waitItems.rows[0].price)*parseInt(waitItems.rows[0].quantity);
-            const updateAmountSQL = `UPDATE data.orders 
-                    SET order_amount = ${totalWaitAmount},
-                    total_amount = ${totalWaitAmount},
-                    user_id='${userId}'
-                    WHERE id='${orderId}'`;
-            await client.query(updateAmountSQL);
-            await client.query(`UPDATE data.order_items SET order_id=${orderId} WHERE id=${waitItemId}`);
-
-            return {success: true, orderId: orderId, orderNumber: orderNumber };
-        } catch (e) {
-            if (process.env.NODE_ENV === 'development') {
-                logger.log(
-                    'error',
-                    'Model error:',
-                    { message: e.message }
-                );
-            }
-            return {success: false, error: e.message };
-        } finally {
-            client.release();
-        }
-    }
-
-    async findWaitById (itemOrderId, userId) {
-        const client = await pool.connect();
-        try {
-            let orderNumber;let orderId;let waitItemId;
-            const SQL = `SELECT data.orders.id as order_wait_id, order_number, data.order_items.status, data.orders.id AS orderId,
-                        data.orders.live_sessions_id, order_amount, total_amount, quantity, data.order_items.user_id, 
-                                data.order_items.id as item_id
-                                FROM data.order_items 
-                                LEFT JOIN data.orders ON data.orders.user_id = data.order_items.user_id
-                                WHERE data.orders.id=${itemOrderId}`;
-            const res = await client.query(SQL);
-            orderNumber = res.rows[0].order_number;
-            orderId = res.rows[0].order_wait_id;
-            waitItemId = res.rows[0].item_id;
-
-            return {success: true, orderId: orderId, orderNumber: orderNumber };
-        } catch (e) {
-            if (process.env.NODE_ENV === 'development') {
-                logger.log(
-                    'error',
-                    'Model error:',
-                    { message: e.message }
-                );
-            }
-            return {success: false, error: e.message };
-        } finally {
-            client.release();
-        }
-    }
-
+    /**
+     * if time end mark order as expired and update waiting items
+     *
+     * @param orderId - integer
+     * @param userId - integer
+     * @returns {Promise<{success: boolean, error}>}
+     */
     async expireOrder(orderId, userId) {
         const client = await pool.connect();
         try {
@@ -1815,6 +1807,13 @@ class Order {
         }
     }
 
+    /**
+     * Connect link  from fb messenger with order in db
+     *
+     * @param commentId - integer
+     * @param userId - integer
+     * @returns {Promise<{success: boolean, error}|{orderNumber, orderId, success: boolean, storeName}>}
+     */
     async findByCommentId (commentId, userId) {
         const client = await pool.connect();
         try {
@@ -1885,8 +1884,6 @@ class Order {
                             const dateTo = moment(settingsSettingsRes.rows[0].free_shipping_to).format('YYYY-MM-DD hh:mm:ss');
 
                             const inPeriod = forattedDate >= dateFrom && forattedDate <= dateTo;
-                            // const freePeriodEnd = settingsSettingsRes.rows[0].free_shipping_to ?
-                            //     moment(settingsSettingsRes.rows[0].free_shipping_to).format('YYYY-MM-DD hh:mm:ss') : null;
                             let updtQuery;
                             if (settingsSettingsRes.rows[0].free_shipping_to) {
                                 updtQuery = `UPDATE data.orders 
@@ -2101,248 +2098,14 @@ class Order {
         }
     }
 
-
-    async bulkCancel (orderIds) {
-        const client = await pool.connect();
-        try {
-            const SQL = `SELECT * FROM data.orders  WHERE id IN (${orderIds.join(',')})`;
-            const res = await client.query(SQL);
-            if (res.rows.length > 0) {
-                const promisesQueries = [];
-                res.rows.forEach(order => {
-                    promisesQueries.push(this.cancelOrder(order));
-                });
-                if (promisesQueries.length) {
-                    await Promise.all(promisesQueries);
-                }
-                return {success: true, error: null};
-            } else {
-                return {success: false, error: 'No record find'};
-            }
-
-        } catch (e) {
-            if (process.env.NODE_ENV === 'development') {
-                logger.log(
-                    'error',
-                    'Model error:',
-                    { message: e.message }
-                );
-            }
-            return {success: false, error: e.message };
-        } finally {
-            client.release();
-        }
-    }
-
-
-    async insertOrderStatus (orderId, status, locale) {
-        const client = await pool.connect();
-        try {
-            // console.log(`INSERT INTO data.order_statuses (order_id, status) VALUES ('${orderId}', '${status}')`);
-            const _tmpRes = await client.query(`SELECT * FROM data.order_statuses WHERE order_id='${orderId}' AND status='${status}'`);
-            if (_tmpRes.rows.length === 0) {
-                const SQL = await client.query(`INSERT INTO data.order_statuses (order_id, status) VALUES ('${orderId}', '${status}')`);
-            }
-            return {success: true, error: null};
-        } catch (e) {
-            if (process.env.NODE_ENV === 'development') {
-                logger.log(
-                    'error',
-                    'Model error:',
-                    { message: e.message }
-                );
-            }
-            return {success: false, error: e.message };
-        } finally {
-            client.release();
-        }
-    }
-
-    async removeUnpayedSessionsOrders () {
-        const client = await pool.connect();
-        try {
-            const expireDateNotSync = moment().add(-process.env.ORDER_REMOVE_DAYS, 'days').add(3, 'hours').format('YYYY-MM-DD HH:mm:ss');
-            const ordersNotSyncQuery = `SELECT * FROM data.orders WHERE status='new'
-                AND created_at <= '${expireDateNotSync}' AND sync_at IS NULL`;
-            const ordersSyncQuery = `SELECT * FROM data.orders WHERE status='new'
-                AND sync_at <= '${expireDateNotSync}'`;
-            const notSyncRes = await client.query(ordersNotSyncQuery);
-            const syncRes = await client.query(ordersSyncQuery);
-            if (notSyncRes.rows.length > 0) {
-                // store products back and set status expired
-                notSyncRes.rows.forEach(async _order => {
-                    const notSyncItems = await client.query(`SELECT * FROM data.order_items WHERE order_id=${_order.id}`);
-                    if (notSyncItems.rows.length > 0) {
-                        notSyncItems.rows.forEach(async _item => {
-                            // console.log(_item.product_configuration_id, _item.quantity);
-                            await client.query(`UPDATE data.product_configurations 
-                                SET quantity = quantity + ${parseInt(_item.quantity)} WHERE id='${_item.product_configuration_id}'`);
-                            await client.query(`DELETE FROM data.order_items WHERE id='${_item.id}'`);
-                        });
-                    }
-                    await client.query(`UPDATE data.orders SET status='expired' WHERE id=${_order.id}`)
-                })
-            }
-            if (syncRes.rows.length > 0) {
-                // store products back and set status expired
-                syncRes.rows.forEach(async _order => {
-                    const notSyncItems = await client.query(`SELECT * FROM data.order_items WHERE order_id=${_order.id}`);
-                    if (notSyncItems.rows.length > 0) {
-                        notSyncItems.rows.forEach(async _item => {
-                            // console.log(_item.product_configuration_id, _item.quantity);
-                            await client.query(`UPDATE data.product_configurations 
-                                SET quantity = quantity + ${parseInt(_item.quantity)} WHERE id='${_item.product_configuration_id}'`);
-                            await client.query(`DELETE FROM data.order_items WHERE id='${_item.id}'`);
-                        });
-                    }
-                    await client.query(`UPDATE data.orders SET status='expired' WHERE id=${_order.id}`)
-                })
-            }
-            return {success: true};
-        } catch (e) {
-            if (process.env.NODE_ENV === 'development') {
-                logger.log(
-                    'error',
-                    'Model error:',
-                    { message: e.message }
-                );
-            }
-            return {success: false, error: e.message };
-        } finally {
-            client.release();
-        }
-    }
-
-    async removeExpireOrder() {
-        const client = await pool.connect();
-        try {
-            const _tmpRes = await client.query(`SELECT * FROM data.orders 
-                WHERE status='new' AND (expire_order_at ) < (NOW())
-                 AND expire_order_at IS NOT NULL LIMIT 20`);
-            if (_tmpRes.rows.length > 0) {
-                _tmpRes.rows.forEach(async _order => {
-                    const tmpResItems = await client.query(`SELECT * FROM data.order_items WHERE order_id='${_order.id}'`);
-                    if (tmpResItems.rows.length > 0) {
-                        tmpResItems.rows.forEach(async _item => {
-                            // return quntity for configuration
-                            await client.query(`UPDATE data.product_configurations SET quantity=quantity+${parseInt(_item.quantity)} WHERE id=${_item.product_configuration_id}`)
-                            console.log(`DELETE FROM data.order_items WHERE id=${_item.id}`);
-                            await client.query(`DELETE FROM data.order_items WHERE id=${_item.id}`);
-
-                            shell.exec(`pm2 start ../BE/storeJobs/jobStoreWaiting.js --name "jobStoreWaiting ${_item.product_configuration_id}" -- configId=${_item.product_configuration_id}`, function(code, output) {
-                                console.log('Exit code:', code);
-                                console.log('Program output:', output);
-                            });
-
-                        })
-                    }
-                    // console.log(`DELETE FROM data.orders WHERE id=${_order.id}`);
-                    await client.query(`DELETE FROM data.orders WHERE id=${_order.id}`);
-
-                })
-            }
-
-            return {success: true, error: null};
-        } catch (e) {
-            if (process.env.NODE_ENV === 'development') {
-                logger.log(
-                    'error',
-                    'Model error:',
-                    { message: e.message }
-                );
-            }
-            return {success: false, error: e.message };
-        } finally {
-            client.release();
-        }
-
-
-    }
-
-    async removeExpirePeriodOrder() {
-        const client = await pool.connect();
-        try {
-            console.log(`SELECT * FROM data.orders
-                WHERE free_period_end < (NOW() + interval '${process.env.PERIOD_ORDER_DIFF} hour') LIMIT 20`);
-            const _tmpRes = await client.query(`SELECT * FROM data.orders 
-                WHERE status='new' AND free_period_end < (NOW() + interval '${process.env.PERIOD_ORDER_DIFF} hour') LIMIT 20`);
-            // console.log(_tmpRes);
-            if (_tmpRes.rows.length > 0) {
-                _tmpRes.rows.forEach(async _order => {
-                    const tmpResItems = await client.query(`SELECT * FROM data.order_items WHERE order_id='${_order.id}'`);
-                    if (tmpResItems.rows.length > 0) {
-                        tmpResItems.rows.forEach(async _item => {
-                            // return quntity for configuration
-                            await client.query(`UPDATE data.product_configurations SET quantity=quantity+${parseInt(_item.quantity)} WHERE id=${_item.product_configuration_id}`)
-                            await client.query(`DELETE FROM data.order_items WHERE id=${_item.id}`);
-
-                            shell.exec(`pm2 start ../BE/storeJobs/jobStoreWaiting.js --name "jobStoreWaiting ${_item.product_configuration_id}" -- configId=${_item.product_configuration_id}`, function(code, output) {
-                                console.log('Exit code:', code);
-                                console.log('Program output:', output);
-                            });
-
-                        })
-                    }
-                    // console.log(`DELETE FROM data.orders WHERE id=${_order.id}`);
-                    await client.query(`DELETE FROM data.orders WHERE id=${_order.id}`);
-
-                })
-            }
-
-            return {success: true, error: null};
-        } catch (e) {
-            if (process.env.NODE_ENV === 'development') {
-                logger.log(
-                    'error',
-                    'Model error:',
-                    { message: e.message }
-                );
-            }
-            return {success: false, error: e.message };
-        } finally {
-            client.release();
-        }
-
-    }
-
-    async removeUnpayedSessionOrder (sessionId) {
-        const client = await pool.connect();
-        try {
-            const _tmpRes = await client.query(`SELECT * FROM data.orders WHERE live_sessions_id='${sessionId}' AND status='new' AND total_amount > 0 LIMIT 20`);
-            if (_tmpRes.rows.length > 0) {
-                _tmpRes.rows.forEach(async _order => {
-                    const tmpResItems = await client.query(`SELECT * FROM data.order_items WHERE order_id='${_order.id}'`);
-                    if (tmpResItems.rows.length > 0) {
-                        tmpResItems.rows.forEach(async _item => {
-                            // return quntity for configuration
-                            await client.query(`UPDATE data.product_configurations SET quantity=quantity+${parseInt(_item.quantity)} WHERE id=${_item.product_configuration_id}`)
-                            await client.query(`DELETE FROM data.order_items WHERE id=${_item.id}`);
-
-                            shell.exec(`pm2 start ../BE/storeJobs/jobStoreWaiting.js --name "jobStoreWaiting ${_item.product_configuration_id}" -- configId=${_item.product_configuration_id}`, function(code, output) {
-                                console.log('Exit code:', code);
-                                console.log('Program output:', output);
-                            });
-                        })
-                    }
-                    await client.query(`DELETE FROM data.orders WHERE id=${_order.id}`)
-                })
-            }
-
-            return {success: true, error: null};
-        } catch (e) {
-            if (process.env.NODE_ENV === 'development') {
-                logger.log(
-                    'error',
-                    'Model error:',
-                    { message: e.message }
-                );
-            }
-            return {success: false, error: e.message };
-        } finally {
-            client.release();
-        }
-    }
-
+    /**
+     * Buld downloads orders pdf
+     *
+     * @param ids - array
+     * @param user - object
+     * @param locale - string
+     * @returns {Promise<{success: boolean, error}|{success: boolean, achive: string, error: null}>}
+     */
     async bulkDownload(ids, user, locale) {
         const client = await pool.connect();
         try {
@@ -2381,131 +2144,6 @@ class Order {
             };
         } catch (e) {
             console.log(e.message)
-            if (process.env.NODE_ENV === 'development') {
-                logger.log(
-                    'error',
-                    'Model error:',
-                    { message: e.message }
-                );
-            }
-            return {success: false, error: e.message };
-        } finally {
-            client.release();
-        }
-    }
-
-    async isFreeShipping(userId, orderNumber) {
-        const client = await pool.connect();
-        // console.log('Calculate period');
-        try {
-            let sellerData;
-            let settingsThreshold;
-            let settings;
-            const currentOrder = await client.query(`SELECT * FROM data.orders WHERE order_number='${orderNumber}' AND user_id=${userId}`);
-            sellerData = await client.query(`SELECT user_id 
-                                FROM data.live_sessions WHERE id=${currentOrder.rows[0].live_sessions_id}`);
-            settings = await client.query(`SELECT * FROM data.seller_settings WHERE user_id=${sellerData.rows[0].user_id}`);
-
-            settingsThreshold = await client.query(`SELECT * FROM data.free_order_threshold WHERE user_id=${sellerData.rows[0].user_id}`);
-            let threshold = 0;
-            if (settingsThreshold.rows.length > 0) {
-                threshold = parseInt(settingsThreshold.rows[0].threshold) > 0 ? settingsThreshold.rows[0].threshold : 0;
-            }
-
-            let inPeriod = false;
-            let amountRefund = 0;
-            const startDateDb   = moment(settings.rows[0].free_shipping_from).format("YYYY-MM-DD HH:mm:ss");
-            const endDateDb     = moment(settings.rows[0].free_shipping_to).format("YYYY-MM-DD HH:mm:ss");
-            const orderCreatedAtDb= moment(currentOrder.rows[0].created_at).add(process.env.PERIOD_ORDER_DIFF, 'hours').format("YYYY-MM-DD HH:mm:ss");
-            if (settings.rows[0].free_shipping_from) {
-                const checkPeriodQuery = `SELECT 1 WHERE '${orderCreatedAtDb}' 
-                        BETWEEN '${startDateDb}' 
-                        AND '${endDateDb}'`;
-                const checkPeriodRes = await client.query(checkPeriodQuery);
-                inPeriod =  checkPeriodRes.rows.length > 0;
-            }
-            if (inPeriod) {
-                const orderQuery = `SELECT SUM(total_amount) AS sum_total, 
-                            SUM(shipping_amount) AS sum_shipping,
-                            SUM(refund_amount) AS sum_refund 
-                            FROM data.orders 
-                            LEFT JOIN data.live_sessions ON data.live_sessions.id = data.orders.live_sessions_id
-                            WHERE  (data.orders.status = 'payed' OR data.orders.status = 'new') 
-                            AND data.orders.user_id='${userId}' AND 
-                            data.orders.created_at BETWEEN '${startDateDb}' AND '${endDateDb}'
-                            GROUP BY data.orders.user_id`;
-                const sumOrderRes = await client.query(orderQuery);
-                let payedShippingAmount; let freeShipping = false;let refundAmound = 0; let sumTotal = 0;
-                payedShippingAmount = parseFloat(sumOrderRes.rows.length > 0 ? sumOrderRes.rows[0].sum_shipping : 0 );
-                refundAmound = parseFloat(sumOrderRes.rows.length > 0 ? sumOrderRes.rows[0].sum_refund : 0);
-                sumTotal = parseFloat(sumOrderRes.rows.length > 0 ? sumOrderRes.rows[0].sum_total : 0);
-                if (parseFloat(sumTotal) < parseFloat(threshold)) {
-                    console.log('Payed Shipping', payedShippingAmount)
-                    if (payedShippingAmount > 0) {
-                        freeShipping = true;
-                    } else {
-                        freeShipping = false;
-                    }
-                    console.log('Free shipping ', freeShipping);
-                    return {success: true, amount_refund: 0, freeShipping: freeShipping}
-                } else {
-                    if (refundAmound === 0 && payedShippingAmount > 0) {
-                        refundAmound = payedShippingAmount;
-                    } else {
-                        refundAmound = 0;
-                    }
-                    return {success: true, amount_refund: refundAmound, freeShipping: true}
-                }
-
-                return {success: true, amount_refund: 0, freeShipping: false}
-            } else {
-                return {success: true, amount_refund: 0, freeShipping: false}
-            }
-        } catch (e) {
-            console.log(e.message)
-            if (process.env.NODE_ENV === 'development') {
-                logger.log(
-                    'error',
-                    'Model error:',
-                    { message: e.message }
-                );
-            }
-            return {success: false, error: e.message };
-        } finally {
-            client.release();
-        }
-    }
-
-
-    async cancelOrder(order) {
-        const client = await pool.connect();
-        try {
-            const sellerSettingsRes = await client.query(`SELECT * FROM data.get_seller_settings(${order.id});`);
-            const refundPrefix = generateRndPrefix(4);
-            if (sellerSettingsRes.rows.length === 0) {
-                return {success: false, error: 'No key for payment'}
-            }
-            const orderData = {
-                "currency": "EUR",
-                "amount": (parseFloat(order.total_amount) + parseFloat(order.shipping_amount > 0 ? order.shipping_amount : 0))*100,
-                "description": "Refund by seller"
-            }
-            const multiSafePayClientRes = await axios
-                .post(`${process.env.MULTISAFEPAY_URL}/orders/${process.env.MULTISAFE_ORDER_PREFIX}-${order.id}/refunds?api_key=${sellerSettingsRes.rows[0].multisafe_api_key}`, orderData,{
-                    headers: { 'Content-Type': 'application/json' }
-                })
-                .then(async () => {
-                    await client.query(`UPDATE data.orders SET status='canceled', refund_prefix='${refundPrefix}' WHERE id=${order.id};`);
-                    await client.query(`INSERT INTO data.order_statuses (order_id, status) VALUES ('${order.id}', 'canceled')`);
-                    return {success: true, error: null}
-                }).catch(error => {
-                    console.log(error);
-                    console.log('Multisafe error', error.message);
-                    return {success: false, error: error.message}
-                });
-
-            return {success: multiSafePayClientRes.success, error: null};
-        } catch (e) {
             if (process.env.NODE_ENV === 'development') {
                 logger.log(
                     'error',

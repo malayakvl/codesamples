@@ -13,22 +13,6 @@ export const productAdditionalSelector = createSelector(
     (products: State.Products): any => products.additional
 );
 
-// export const productStyleSelector = createSelector(
-//     rootSelector,
-//     (products: State.Products): Products.Style[] => products.styles
-// );
-// export const productMaterialsSelector = createSelector(
-//     rootSelector,
-//     (products: State.Products): Products.Material[] => products.materials
-// );
-// export const productColorSelector = createSelector(
-//     rootSelector,
-//     (products: State.Products): Products.Color[] => products.colors
-// );
-// export const productSizesSelector = createSelector(
-//     rootSelector,
-//     (products: State.Products): Products.Size[] => products.sizes
-// );
 export const getIdentSelector = createSelector(
     rootSelector,
     (products: State.Products): boolean => products.setupIdent
